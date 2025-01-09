@@ -4,23 +4,31 @@ FROM ruby:3.3.6-slim
 RUN apt-get update -qq && apt-get install -y \
     build-essential \
     default-libmysqlclient-dev \
+    default-mysql-client \
     git \
+    netcat-traditional \
     && rm -rf /var/lib/apt/lists/*
 
 # 设置工作目录
 WORKDIR /app
 
-# 复制Gemfile
-COPY Gemfile Gemfile.lock ./
+# 复制所有文件，包括.git目录
+COPY . .
+
+# 初始化git submodule
+RUN git submodule update --init
 
 # 安装依赖
-RUN bundle install
+COPY Gemfile Gemfile.lock ./
+RUN bundle config --local deployment true && \
+    bundle install
 
-# 复制应用代码
-COPY . .
+# 添加启动脚本权限
+RUN chmod +x docker-entrypoint.sh
 
 # 暴露端口
 EXPOSE 9292
 
-# 启动命令
+# 设置启动脚本
+ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["bundle", "exec", "rackup", "-o", "0.0.0.0"]
