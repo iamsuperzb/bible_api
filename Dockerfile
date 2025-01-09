@@ -5,18 +5,19 @@ RUN apt-get update -qq && apt-get install -y \
     build-essential \
     default-libmysqlclient-dev \
     default-mysql-client \
-    git \
+    curl \
     netcat-traditional \
     && rm -rf /var/lib/apt/lists/*
 
 # 设置工作目录
 WORKDIR /app
 
-# 复制所有文件，包括.git目录
+# 复制应用代码
 COPY . .
 
-# 初始化git submodule
-RUN git submodule update --init
+# 下载圣经数据
+RUN mkdir -p bibles && \
+    curl -L https://github.com/seven1m/open-bibles/archive/master.tar.gz | tar xz -C bibles --strip-components=1
 
 # 安装依赖
 COPY Gemfile Gemfile.lock ./
