@@ -3,5 +3,5 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "bundle exec rackup -o 0.0.0.0 -p $PORT"
+startCommand = "bundle exec rackup -o 0.0.0.0"
 restartPolicyType = "ON_FAILURE" 

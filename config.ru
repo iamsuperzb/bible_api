@@ -14,4 +14,7 @@ disable :run
 #log = File.new("#{root_dir}/log/sinatra.log", "a")
 #$stderr.reopen(log)
 
+port = ENV['PORT'] || 9292
+set :port, port.to_i
+
 run Sinatra::Application

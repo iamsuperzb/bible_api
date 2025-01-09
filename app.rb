@@ -10,9 +10,9 @@ require 'sinatra/reloader'
 require 'dotenv'
 Dotenv.load
 
-REDIS = Redis.new(url: ENV.fetch('REDIS_URL'))
+REDIS = Redis.new(url: ENV['REDIS_URL'] || 'redis://localhost:6379/0')
 
-DB = Sequel.connect(ENV.fetch('DATABASE_URL').sub(%r{mysql://}, 'mysql2://'), encoding: 'utf8mb4', max_connections: 10)
+DB = Sequel.connect(ENV['DATABASE_URL']&.sub(%r{mysql://}, 'mysql2://') || 'mysql2://root:root@localhost/bible_api', encoding: 'utf8mb4', max_connections: 10)
 # DB.sql_log_level = :debug
 # DB.loggers << Logger.new($stdout)
 
