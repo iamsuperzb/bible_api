@@ -5,8 +5,10 @@ RUN apt-get update -qq && apt-get install -y \
     build-essential \
     default-libmysqlclient-dev \
     default-mysql-client \
-    curl \
+    git \
     netcat-traditional \
+    wget \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # 设置工作目录
@@ -16,8 +18,10 @@ WORKDIR /app
 COPY . .
 
 # 下载圣经数据
-RUN mkdir -p bibles && \
-    curl -L https://github.com/seven1m/open-bibles/archive/master.tar.gz | tar xz -C bibles --strip-components=1
+RUN wget https://github.com/seven1m/open-bibles/archive/refs/heads/master.zip && \
+    unzip master.zip && \
+    mv open-bibles-master/bibles bibles && \
+    rm -rf master.zip open-bibles-master
 
 # 安装依赖
 COPY Gemfile Gemfile.lock ./
