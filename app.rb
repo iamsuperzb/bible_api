@@ -19,6 +19,14 @@ DB = Sequel.connect(ENV['DATABASE_URL']&.sub(%r{mysql://}, 'mysql2://') || 'mysq
 use Rack::Attack
 Rack::Attack.cache.store = Rack::Attack::StoreProxy::RedisStoreProxy.new(REDIS)
 
+# 添加白名单规则
+Rack::Attack.safelist('allow from askbibleverse.com') do |req|
+  host = req.host.downcase
+  host == 'askbibleverse.com' || 
+  host == 'www.askbibleverse.com' ||
+  host.end_with?('.askbibleverse.com')
+end
+
 RACK_ATTACK_LIMIT = 15
 RACK_ATTACK_PERIOD = 30
 

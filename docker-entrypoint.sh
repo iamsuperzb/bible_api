@@ -13,18 +13,18 @@ while ! nc -z $MYSQL_HOST 3306; do
 done
 echo "MySQL started"
 
-# 从DATABASE_URL中提取用户名和密码
+# 从DATABASE_URL中提取连接信息
 DB_USER=$(echo $DATABASE_URL | sed -n 's/.*mysql2:\/\/\([^:]*\):.*/\1/p')
 DB_PASS=$(echo $DATABASE_URL | sed -n 's/.*mysql2:\/\/[^:]*:\([^@]*\)@.*/\1/p')
+DB_HOST=$(echo $DATABASE_URL | sed -n 's/.*@\([^:]*\):.*/\1/p')
+DB_PORT=$(echo $DATABASE_URL | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')
 DB_NAME=$(echo $DATABASE_URL | sed -n 's/.*\/\([^?]*\).*/\1/p')
 
 echo "Database connection info:"
 echo "User: $DB_USER"
 echo "Database: $DB_NAME"
-echo "Host: $MYSQL_HOST"
-
-echo "Creating database if not exists..."
-mysql -h"$MYSQL_HOST" -u"$DB_USER" -p"$DB_PASS" -e "CREATE DATABASE IF NOT EXISTS $DB_NAME;"
+echo "Host: $DB_HOST"
+echo "Port: $DB_PORT"
 
 # 检查圣经数据
 echo "Checking Bible data..."
@@ -32,7 +32,7 @@ ls -la bibles/
 
 # 初始化数据库
 echo "Importing Bible translations..."
-bundle exec ruby import.rb
+MYSQL_PWD=$DB_PASS bundle exec ruby import.rb
 
 echo "Starting application..."
 exec "$@" 

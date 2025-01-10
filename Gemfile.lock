@@ -69,6 +69,7 @@ DEPENDENCIES
   bible_ref
   dotenv
   mysql2
+  nokogiri
   puma
   rack-attack
   rackup
@@ -79,7 +80,7 @@ DEPENDENCIES
   sinatra-contrib
 
 RUBY VERSION
-   ruby 3.3.6p108
+   ruby 3.2.2p53
 
 BUNDLED WITH
    2.6.2

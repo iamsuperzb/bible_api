@@ -44,26 +44,81 @@ end
 
 DB = Sequel.connect(ENV['DATABASE_URL'].sub(%r{mysql://}, 'mysql2://'), encoding: 'utf8mb4')
 
+puts "\n=== STARTING PROGRAM ==="
+puts "Current directory: #{Dir.pwd}"
+puts "ENV['DATABASE_URL']: #{ENV['DATABASE_URL']}"
+
+puts "\n=== ENVIRONMENT LOADED ==="
+puts "After Dotenv.load, DATABASE_URL: #{ENV['DATABASE_URL']}"
+
+# 测试数据库连接
+begin
+  DB.test_connection
+  puts "✓ Database connection successful!"
+  puts "Tables: #{DB.tables.inspect}"
+rescue => e
+  puts "✗ Database connection failed!"
+  puts "Error: #{e.message}"
+  puts e.backtrace
+  exit 1
+end
+
 class Importer
   def import(path, translation_id)
-    puts '  importing...'
-    bible = BibleParser.new(File.open(path))
-    bible.each_verse do |verse|
-      data = verse.to_h
-      data[:book] = data.delete(:book_title)
-      data[:chapter] = data.delete(:chapter_num)
-      data[:verse] = data.delete(:num)
-      data[:translation_id] = translation_id
-      print "  #{translation_id} - #{data[:book]} #{data[:chapter]}:#{data[:verse]}                    \r"
-      DB[:verses].insert(data)
+    puts "  importing from path: #{path}"
+    puts "  translation_id: #{translation_id}"
+    
+    unless File.exist?(path)
+      puts "  ERROR: File not found: #{path}"
+      return
     end
-    puts '  done                                             '
+    
+    begin
+      DB.run("SET FOREIGN_KEY_CHECKS=0")
+      DB.run("ALTER TABLE verses DISABLE KEYS")
+      
+      DB.transaction do
+        bible = BibleParser.new(File.open(path))
+        verse_count = 0
+        batch_size = 1000
+        verses_batch = []
+        
+        bible.each_verse do |verse|
+          data = verse.to_h
+          data[:book] = data.delete(:book_title)
+          data[:chapter] = data.delete(:chapter_num)
+          data[:verse] = data.delete(:num)
+          data[:translation_id] = translation_id
+          
+          verses_batch << data
+          verse_count += 1
+          
+          if verses_batch.size >= batch_size
+            print "  Importing batch of #{batch_size} verses (total: #{verse_count})...\r"
+            DB[:verses].multi_insert(verses_batch)
+            verses_batch = []
+          end
+        end
+        
+        DB[:verses].multi_insert(verses_batch) unless verses_batch.empty?
+        puts "\n  Successfully imported #{verse_count} verses"
+      end
+      
+    rescue => e
+      puts "  ERROR: #{e.message}"
+      puts e.backtrace
+    ensure
+      DB.run("ALTER TABLE verses ENABLE KEYS")
+      DB.run("SET FOREIGN_KEY_CHECKS=1")
+    end
   end
 end
 
 if @options[:drop_tables]
-  DB.drop_table :translations
-  DB.drop_table :verses
+  DB.run("SET FOREIGN_KEY_CHECKS=0")
+  DB.drop_table? :translations
+  DB.drop_table? :verses
+  DB.run("SET FOREIGN_KEY_CHECKS=1")
 end
 
 DB.create_table? :translations, charset: 'utf8mb4' do
@@ -86,58 +141,78 @@ DB.create_table? :verses, charset: 'utf8mb4' do
   Fixnum :translation_id
 end
 
+puts "\n=== TABLES CREATED ==="
+puts "Current tables: #{DB.tables.inspect}"
+
 importer = Importer.new
 
-# grab bible file info from the README.md table (markdown format)
-table = File.read("#{@options[:bibles_path]}/README.md").scan(/^ *\|.+\| *$/)
-headings = table.shift.split(/\s*\|\s*/)
-table.shift # junk
-translations = table.map do |row|
-  cells = row.split(/\s*\|\s*/)
-  headings.each_with_index.each_with_object({}) do |(heading, index), hash|
-    hash[heading.downcase] = cells[index] unless heading.empty?
-  end
+puts "\n=== SCANNING FILES ==="
+puts "Looking in: #{@options[:bibles_path]}"
+puts "Full path: #{File.expand_path(@options[:bibles_path])}"
+Dir.glob("#{@options[:bibles_path]}/*.{xml,usfx,osis}").each do |f|
+  puts "Found file: #{f}"
 end
 
-translations.each do |translation|
-  path = "#{@options[:bibles_path]}/#{translation['filename']}"
-  next if @options[:translation] && path.split('/').last != @options[:translation]
-
-  puts path
-  lang_code_and_id = translation.delete('filename').split('.').first
+translations = Dir.glob("#{@options[:bibles_path]}/*.{xml,usfx,osis}").map do |path|
+  filename = File.basename(path)
+  lang_code_and_id = filename.split('.').first
   lang_parts = lang_code_and_id.split('-')
-  if lang_parts.size == 3
-    translation['language_code'] = lang_parts.first
-    translation['identifier'] = translation['abbrev'].downcase
-    raise 'bad abbrev' if translation['identifier'].to_s.strip == ''
-  elsif lang_parts.size == 2
-    translation['language_code'], translation['identifier'] = lang_parts
+  
+  {
+    identifier: lang_parts[1],
+    name: lang_parts[1].upcase,
+    language: lang_parts[0],
+    language_code: lang_parts[0]
+  }
+end
+
+puts "\n=== PROCESSING TRANSLATIONS ==="
+puts "Total translations found: #{translations.length}"
+
+puts "\nFound translations:"
+translations.each do |t|
+  puts "  - #{t.inspect}"
+end
+puts "\n"
+
+translations.each do |translation|
+  puts "\nProcessing translation: #{translation.inspect}"
+  
+  if @options[:translation]
+    next unless File.basename("#{@options[:bibles_path]}/#{translation[:language_code]}-#{translation[:identifier]}.usfx.xml") == @options[:translation]
+    path = "#{@options[:bibles_path]}/#{@options[:translation]}"
   else
-    raise "error with language and id for lang parts: #{lang_parts.inspect}"
-  end
-  translation['language_code'] = 'zh-tw' if translation['language_code'] == 'chi'
-  translation.delete('format')
-  translation.delete('abbrev')
-  translation['name'] = translation.delete('version')
-  language = translation['language_code']
-  begin
-    BibleRef::Reference.new('John 3:16', language: language)
-  rescue KeyError
-    puts "  language #{language} not supported"
-    next
+    path = "#{@options[:bibles_path]}/#{translation[:language_code]}-#{translation[:identifier]}"
+    path += case File.exist?("#{path}.usfx.xml")
+            when true then ".usfx.xml"
+            when false then ".osis.xml"
+            end
   end
 
-  existing_id = DB['select id from translations where identifier = ?', translation['identifier']].first&.fetch(:id, nil)
+  puts "Full path: #{path}"
+  puts "File exists? #{File.exist?(path)}"
+  
+  translation[:language_code] = "zh-tw" if translation[:language_code] == "chi"
+  puts "Updated translation: #{translation.inspect}"
+
+  existing_id = DB["select id from translations where identifier = ?", translation[:identifier]].first&.fetch(:id, nil)
+  puts "Existing ID: #{existing_id}"
+  
   if existing_id
     if @options[:overwrite]
+      puts "Deleting existing data..."
       DB[:verses].where(translation_id: existing_id).delete
-      DB[:translations].where(identifier: translation['identifier']).delete
+      DB[:translations].where(identifier: translation[:identifier]).delete
     else
-      puts '  skipping existing translation (pass --overwrite)'
+      puts "  skipping existing translation (pass --overwrite)"
       next
     end
   end
 
+  puts "Inserting translation..."
   id = DB[:translations].insert(translation)
+  puts "Inserted with ID: #{id}"
+  
+  puts "Starting import..."
   importer.import(path, id)
 end
