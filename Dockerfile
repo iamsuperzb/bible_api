@@ -1,4 +1,4 @@
-FROM ruby:3.3.6-slim
+FROM ruby:3.2.2-slim
 
 # 安装系统依赖
 RUN apt-get update -qq && apt-get install -y \
