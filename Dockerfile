@@ -16,9 +16,10 @@ WORKDIR /app
 COPY . .
 
 # 安装依赖
-COPY Gemfile Gemfile.lock ./
-RUN bundle config --local deployment true && \
-    bundle install
+COPY Gemfile ./
+RUN rm -f Gemfile.lock && \
+    bundle install && \
+    bundle lock
 
 # 添加启动脚本权限
 RUN chmod +x docker-entrypoint.sh
